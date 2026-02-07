@@ -106,24 +106,6 @@
         -moz-osx-font-smoothing: grayscale;
       }
 
-      body::before {
-        content: "";
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: linear-gradient(
-          90deg,
-          transparent,
-          var(--accent),
-          transparent
-        );
-        background-size: 200% 100%;
-        animation: shimmer 4s ease-in-out infinite;
-        z-index: 100;
-      }
-
       @keyframes shimmer {
         0%,
         100% {
@@ -134,7 +116,20 @@
         }
       }
 
+      #bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        opacity: 0.8;
+      }
+
       .page {
+        position: relative;
+        z-index: 1;
         max-width: 720px;
         margin: 0 auto;
         padding: 0 24px;
@@ -359,6 +354,7 @@
     </style>
   </head>
   <body>
+    <canvas id="bg"></canvas>
     <div class="page">
       <header>
         <h1>Bruno Dzięcielski</h1>
@@ -410,12 +406,17 @@
         </p>
         <p style="font-size: 1.15rem">
           I&rsquo;m also building
-          <a href="https://refina.io" target="_blank" rel="noopener"
+          <a
+            class="highlight"
+            href="https://refina.io"
+            target="_blank"
+            rel="noopener"
             >Refina.io</a
           >
           &mdash; a real-time platform for collaborative refinement of work
-          items, with live synchronization to Azure DevOps and Jira. I own the
-          full architecture, from frontend to backend.
+          items, with live synchronization to Azure DevOps and Jira. I am
+          respohsible for the entire system architecture, including both
+          frontend and backend.
         </p>
       </div>
 
@@ -530,5 +531,92 @@
         </div>
       </footer>
     </div>
+    <script>
+      (function () {
+        var c = document.getElementById("bg");
+        var gl = c.getContext("webgl");
+        if (!gl) return;
+
+        var vs = "attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}";
+        var fs = [
+          "precision highp float;",
+          "uniform float t;",
+          "uniform vec2 r;",
+          "vec2 h2(vec2 p){",
+          "  p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));",
+          "  return -1.0+2.0*fract(sin(p)*43758.5453);",
+          "}",
+          "float gn(vec2 p){",
+          "  vec2 i=floor(p),f=fract(p);",
+          "  vec2 u=f*f*(3.0-2.0*f);",
+          "  return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),",
+          "    mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);",
+          "}",
+          "float fbm(vec2 p){",
+          "  float v=0.0,a=0.5;",
+          "  mat2 ro=mat2(0.8,0.6,-0.6,0.8);",
+          "  for(int i=0;i<5;i++){v+=a*gn(p);p=ro*p*2.0+100.0;a*=0.5;}",
+          "  return v;",
+          "}",
+          "void main(){",
+          "  vec2 st=gl_FragCoord.xy/min(r.x,r.y);",
+          "  float s=t*0.06;",
+          "  float q=fbm(st*2.0+s*0.8);",
+          "  float w=fbm(st*2.0+q+s*0.4+vec2(1.7,9.2));",
+          "  float f=fbm(st*2.0+w*1.5+s*0.2+vec2(8.3,2.8));",
+          "  f=smoothstep(-0.2,1.2,f);",
+          "  vec3 col=mix(vec3(0.25,0.27,0.55),vec3(0.4,0.4,0.95),f);",
+          "  col*=f;",
+          "  gl_FragColor=vec4(col,1.0);",
+          "}",
+        ].join("\n");
+
+        function sh(src, type) {
+          var s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          return s;
+        }
+
+        var pg = gl.createProgram();
+        gl.attachShader(pg, sh(vs, gl.VERTEX_SHADER));
+        gl.attachShader(pg, sh(fs, gl.FRAGMENT_SHADER));
+        gl.linkProgram(pg);
+        gl.useProgram(pg);
+
+        var buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+          gl.STATIC_DRAW
+        );
+        var p = gl.getAttribLocation(pg, "p");
+        gl.enableVertexAttribArray(p);
+        gl.vertexAttribPointer(p, 2, gl.FLOAT, false, 0, 0);
+
+        var tLoc = gl.getUniformLocation(pg, "t");
+        var rLoc = gl.getUniformLocation(pg, "r");
+        var seed = Math.random() * 1000.0;
+
+        function resize() {
+          c.width = window.innerWidth;
+          c.height = window.innerHeight;
+          gl.viewport(0, 0, c.width, c.height);
+        }
+
+        window.addEventListener("resize", resize);
+        resize();
+
+        function draw(now) {
+          gl.uniform1f(tLoc, now * 0.001 + seed);
+          gl.uniform2f(rLoc, c.width, c.height);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          requestAnimationFrame(draw);
+        }
+
+        requestAnimationFrame(draw);
+      })();
+    </script>
   </body>
 </html>
