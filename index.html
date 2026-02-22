@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -30,10 +30,11 @@
       content="Full-stack engineer building real-world products across web apps, internal tools and games."
     />
     <meta name="robots" content="index, follow" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50' y='50' font-size='90' text-anchor='middle' dominant-baseline='central'>B</text></svg>"
-    />
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -96,8 +97,9 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Oxygen, Ubuntu, Cantarell, sans-serif;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+          Cantarell, sans-serif;
         background: var(--bg);
         color: var(--text);
         line-height: 1.8;
@@ -266,7 +268,10 @@
         background: var(--bg-subtle);
         color: var(--text-muted);
         cursor: default;
-        transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease,
+        transition:
+          transform 0.2s ease,
+          border-color 0.2s ease,
+          color 0.2s ease,
           box-shadow 0.2s ease;
       }
 
@@ -589,7 +594,7 @@
         gl.bufferData(
           gl.ARRAY_BUFFER,
           new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
-          gl.STATIC_DRAW
+          gl.STATIC_DRAW,
         );
         var p = gl.getAttribLocation(pg, "p");
         gl.enableVertexAttribArray(p);
