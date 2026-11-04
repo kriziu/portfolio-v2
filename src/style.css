@@ -51,9 +51,15 @@ main {
   height: 34em;
 }
 
-#mark canvas:first-child {
-  filter: blur(7px) saturate(1.4);
-  opacity: 0.6;
+#mark canvas:nth-child(1) {
+  filter: blur(26px) saturate(1.5);
+  opacity: 0.55;
+  mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent);
+}
+
+#mark canvas:nth-child(2) {
+  filter: blur(7px) saturate(1.5) brightness(1.25);
+  opacity: 0.85;
 }
 
 h1,

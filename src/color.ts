@@ -15,12 +15,9 @@ const TONES: Record<SceneName, Tone> = {
   strings: swarmTone,
   plasma: swarmTone,
   fire: swarmTone,
-  julia: (_x, _y, time, value) => [292 + value * 120 + time * 14, 88],
   warp: swarmTone,
-  silk: (x, y, time) => [280 + x * 28 - y * 34 + time * 18, 82],
   prism: (x, y, time) => [Math.hypot(x, y) * 95 - time * 42, 88],
-  attractor: swarmTone,
-  aurora: (_x, y) => [128 + Math.max(y + 0.6, 0) * 104, 84],
+  aurora: swarmTone,
   strands: swarmTone,
   hypercube: swarmTone,
   corona: swarmTone,
@@ -29,25 +26,27 @@ const TONES: Record<SceneName, Tone> = {
   dust: (x, _y, time) => [x * 40 + time * 24, 62],
   planet: swarmTone,
   hole: swarmTone,
-  waves: (x, y, time) => [(Math.hypot(x, y) * 130 - time * 70) % 360, 86],
+  waves: swarmTone,
 };
 
 export function painter(mark: HTMLElement): Draw {
   const stage = document.createElement('div');
+  const halo = document.createElement('canvas');
   const bloom = document.createElement('canvas');
   const ink = document.createElement('canvas');
+  const haloContext = halo.getContext('2d')!;
   const bloomContext = bloom.getContext('2d')!;
   const inkContext = ink.getContext('2d')!;
   const scale = devicePixelRatio;
 
-  bloom.width = COLS;
-  bloom.height = ROWS;
+  halo.width = bloom.width = COLS;
+  halo.height = bloom.height = ROWS;
   ink.width = Math.ceil(COLS * CELL_WIDTH * scale);
   ink.height = Math.ceil(ROWS * FONT_SIZE * scale);
   inkContext.scale(scale, scale);
   inkContext.font = FONT;
   inkContext.textBaseline = 'top';
-  stage.append(bloom, ink);
+  stage.append(halo, bloom, ink);
   mark.append(stage);
 
   const paint: Draw = (frame) => {
@@ -58,14 +57,16 @@ export function painter(mark: HTMLElement): Draw {
       const level = levelOf(value);
       if (level === 0) return;
       const [hue, saturation] = TONES[name](x, y, time, value, tint);
-      const lightness = 36 + value * 52;
+      const lightness = 27 + value * 43 + Math.max(value - 0.8, 0) * 90;
       const colour = `hsl(${hue} ${saturation}% ${lightness}%)`;
       inkContext.fillStyle = colour;
       inkContext.fillText(RAMP[level], col * CELL_WIDTH, row * FONT_SIZE);
       bloomContext.fillStyle = colour;
-      bloomContext.globalAlpha = Math.min(value * 1.3, 1);
+      bloomContext.globalAlpha = Math.min(value * value * 1.5 + value * 0.2, 1);
       bloomContext.fillRect(col, row, 1, 1);
     });
+    haloContext.clearRect(0, 0, COLS, ROWS);
+    haloContext.drawImage(bloom, 0, 0);
   };
 
   return paint;

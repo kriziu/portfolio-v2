@@ -1,6 +1,6 @@
 import './style.css';
 import { painter } from './color';
-import { FADE_S, HOLD_S, SCENE_COUNT, WIPE_COUNT, holdOf, type Frame } from './scenes';
+import { FADE_S, SCENE_COUNT, WIPE_COUNT, holdOf, type Frame } from './scenes';
 
 const FRAME_MS = 30;
 const MAX_STEP_MS = 100;
@@ -16,7 +16,7 @@ let scene = still ? 0 : Math.floor(Math.random() * SCENE_COUNT);
 const nextScene = (): number => (scene + 1) % SCENE_COUNT;
 
 if (still) {
-  const show = (): void => draw({ from: scene, to: scene, progress: 0, time: STILL_S, wipe: 0, life: HOLD_S });
+  const show = (): void => draw({ from: scene, to: scene, progress: 0, time: STILL_S, wipe: 0, life: holdOf(scene) });
   show();
   mark.addEventListener('click', () => {
     scene = nextScene();
