@@ -1,0 +1,114 @@
+:root {
+  color-scheme: dark;
+  --paper: #141412;
+  --ink: #e8e5dc;
+  --dim: #96928a;
+  --line: #4d4b45;
+  font: 17px / 1.6 Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, serif;
+}
+
+html {
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+}
+
+main {
+  max-width: 33rem;
+  margin: 0 auto;
+  padding: 12vh 24px 96px;
+}
+
+#mark {
+  position: relative;
+  height: 20em;
+  margin: 0 0 28px -1px;
+  font-size: min(8px, (100vw - 48px) / 38.6);
+  cursor: pointer;
+  user-select: none;
+}
+
+#mark div {
+  position: absolute;
+  z-index: -1;
+  top: -7em;
+  left: -13.87em;
+  width: min(66.34em, 100% + 13.87em + 23px);
+  height: 34em;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#mark canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 66.34em;
+  height: 34em;
+}
+
+#mark canvas:first-child {
+  filter: blur(7px) saturate(1.4);
+  opacity: 0.6;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font: inherit;
+}
+
+h1 {
+  margin-bottom: 14px;
+}
+
+h2 {
+  margin: 36px 0 8px;
+  color: var(--dim);
+}
+
+p {
+  margin: 0 0 14px;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work li {
+  margin-bottom: 10px;
+}
+
+.work .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.work p {
+  margin: 0;
+  color: var(--dim);
+}
+
+time {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
