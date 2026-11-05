@@ -26,6 +26,7 @@ const TREMBLE_PX = 2.4;
 const COPY_BACK_S = 0.6;
 const DAWN_AT_S = 1;
 const DAWN_S = 1.2;
+const SETTLE_POLL_MS = 16;
 
 const { ceil, floor, hypot, max, min, random } = Math;
 
@@ -89,7 +90,7 @@ const stageOf = (mark: HTMLElement): Stage => {
   };
 };
 
-let primed: { storm: Storm; stage: Stage; width: number } | undefined;
+let primed: { storm: Storm; stage: Stage; width: number; height: number } | undefined;
 let held = false;
 
 const dusk = document.createElement('div');
@@ -108,28 +109,44 @@ export const holdBreath = ({ dark, pull, tremble, beat }: Hush): void => {
   copy.style.transform = held ? `translate(${spread(-shake, shake)}px, ${spread(-shake, shake) - pull * PULL_PX}px) scale(${1 - pull * PULL_SCALE})` : '';
 };
 
+const settled = (wait: boolean): boolean => {
+  try {
+    return !primed || primed.storm.settle(wait);
+  } catch {
+    primed?.storm.dispose();
+    primed = undefined;
+    return true;
+  }
+};
+
+const settle = (): void => {
+  if (!settled(false)) setTimeout(settle, SETTLE_POLL_MS);
+};
+
 export const primeJackpot = (mark: HTMLElement): void => {
   const copy = document.querySelector<HTMLElement>('#copy')!;
   const width = innerWidth;
-  if (primed?.width === width && !primed.storm.lost()) return;
+  const height = innerHeight;
+  if (primed?.width === width && primed.height === height && !primed.storm.lost()) return;
   primed?.storm.dispose();
   const stage = stageOf(mark);
   try {
     const storm = createStorm(inkOf(copy), stage);
-    primed = storm && { storm, stage, width };
+    primed = storm && { storm, stage, width, height };
   } catch {
     primed = undefined;
   }
+  settle();
 };
 
 export function jackpot(mark: HTMLElement): void {
   const copy = document.querySelector<HTMLElement>('#copy')!;
   copy.style.transform = '';
-  primeJackpot(mark);
+  if (primed?.width !== innerWidth || primed.storm.lost()) primeJackpot(mark);
+  settled(true);
   if (!primed) return holdBreath(CALM);
   held = false;
   const { storm, stage } = primed;
-  primed = undefined;
   const page = mark.parentElement!;
   const box = copy.getBoundingClientRect();
   const centerX = stage.originX - box.left - scrollX;
@@ -153,12 +170,13 @@ export function jackpot(mark: HTMLElement): void {
     if (done) return;
     done = true;
     removeEventListener('resize', widthChanged);
+    canvas.removeEventListener('webglcontextlost', finish);
     copy.style.maskImage = '';
     copy.style.opacity = '';
     copy.style.willChange = '';
     dusk.style.opacity = '';
     page.style.translate = '';
-    storm.dispose();
+    storm.rewind();
   };
 
   canvas.id = 'jackpot';

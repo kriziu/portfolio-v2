@@ -19,6 +19,7 @@ const LANDING_JITTER_S = 0.12;
 const FLOAT_SIZE = 9;
 const FLOAT_BYTES = FLOAT_SIZE * 4;
 const FURTHEST_LANDING_S = 1.1;
+const WARM_TIME_S = -1;
 
 const UPDATE_VERTEX = `#version 300 es
 precision highp float;
@@ -291,7 +292,9 @@ export interface Stage {
 
 export interface Storm {
   canvas: HTMLCanvasElement;
+  settle(wait?: boolean): boolean;
   draw(time: number, step: number, scrollY: number): void;
+  rewind(): void;
   lost(): boolean;
   dispose(): void;
 }
@@ -337,6 +340,7 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
   const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
   if (!gl) return undefined;
   const floatTargets = gl.getExtension('EXT_color_buffer_float') ?? gl.getExtension('EXT_color_buffer_half_float');
+  const parallel = gl.getExtension('KHR_parallel_shader_compile');
 
   const { width, height, originX, originY, reelGap, waveSpeed, pullS } = stage;
   const unit = sqrt(width * height) / UNIT_AREA;
@@ -350,7 +354,6 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     const shader = gl.createShader(kind)!;
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'shader');
     return shader;
   };
 
@@ -360,13 +363,17 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     gl.attachShader(program, shaderOf(gl.FRAGMENT_SHADER, fragment));
     if (varying) gl.transformFeedbackVaryings(program, [varying], gl.INTERLEAVED_ATTRIBS);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'program');
     const places = new Map<string, WebGLUniformLocation | null>();
-    const place = (name: string): WebGLUniformLocation | null => {
-      if (!places.has(name)) places.set(name, gl.getUniformLocation(program, name));
-      return places.get(name)!;
+    const seat = (): void => {
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'program');
+      const seats = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
+      for (let index = 0; index < seats; index++) {
+        const { name } = gl.getActiveUniform(program, index)!;
+        places.set(name, gl.getUniformLocation(program, name));
+      }
     };
-    return { program, place };
+    const place = (name: string): WebGLUniformLocation | null => places.get(name) ?? null;
+    return { program, place, seat };
   };
 
   const update = programOf(UPDATE_VERTEX, EMPTY_FRAGMENT, 'vState');
@@ -375,6 +382,7 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
   const down = programOf(SCREEN_VERTEX, DOWN_FRAGMENT);
   const up = programOf(SCREEN_VERTEX, UP_FRAGMENT);
   const finish = programOf(SCREEN_VERTEX, FINISH_FRAGMENT);
+  const programs = [update, grain, fade, down, up, finish];
 
   const grains = grainsOf(ink, stage, unit);
   const count = grains.length / FLOAT_SIZE;
@@ -453,7 +461,7 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
-  const draw = (time: number, step: number, scrollY: number): void => {
+  const moveGrains = (time: number, step: number): void => {
     const next = 1 - live;
     gl.useProgram(update.program);
     gl.uniform1f(update.place('uTime'), time);
@@ -471,7 +479,10 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     gl.disable(gl.RASTERIZER_DISCARD);
+  };
 
+  const fadeTrails = (_time: number, step: number): void => {
+    const next = 1 - live;
     gl.bindVertexArray(blank);
     aim(trails[next]);
     gl.useProgram(fade.program);
@@ -479,7 +490,11 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     gl.bindTexture(gl.TEXTURE_2D, trails[live].texture);
     gl.uniform1f(fade.place('uKeep'), TRAIL_KEEP ** (step * 60));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  };
 
+  const paintGrains = (time: number, step: number, scrollY: number): void => {
+    const next = 1 - live;
+    aim(trails[next]);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
     gl.useProgram(grain.program);
@@ -494,16 +509,21 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
     gl.bindVertexArray(blank);
     gl.disable(gl.BLEND);
+  };
 
+  const blurGlow = (): void => {
     gl.useProgram(down.program);
     gl.uniform1f(down.place('uFloor'), BLOOM_FLOOR);
-    pass(trails[next], glows[0], down);
+    pass(trails[1 - live], glows[0], down);
     gl.uniform1f(down.place('uFloor'), 0);
     for (let level = 1; level < BLOOM_LEVELS; level++) pass(glows[level - 1], glows[level], down);
     gl.enable(gl.BLEND);
     for (let level = BLOOM_LEVELS - 1; level > 0; level--) pass(glows[level], glows[level - 1], up);
     gl.disable(gl.BLEND);
+  };
 
+  const present = (time: number, _step: number, scrollY: number): void => {
+    const next = 1 - live;
     aim(null);
     gl.useProgram(finish.program);
     gl.activeTexture(gl.TEXTURE1);
@@ -523,10 +543,44 @@ export function createStorm(ink: Float32Array, stage: Stage): Storm | undefined 
     live = next;
   };
 
+  const stages = [moveGrains, fadeTrails, paintGrains, blurGlow, present];
+
+  const draw = (time: number, step: number, scrollY: number): void => {
+    for (const stage of stages) stage(time, step, scrollY);
+  };
+
+  let seated = false;
+  let warmed = 0;
+
+  const settle = (wait = false): boolean => {
+    if (warmed === stages.length) return true;
+    if (!seated) {
+      if (!wait && parallel && !gl.isContextLost() && !programs.every(({ program }) => gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR))) return false;
+      for (const { seat } of programs) seat();
+      seated = true;
+    }
+    do stages[warmed++](WARM_TIME_S, 0, 0);
+    while (wait && warmed < stages.length);
+    return warmed === stages.length;
+  };
+
+  const rewind = (): void => {
+    canvas.remove();
+    for (const buffer of moving) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, states);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    for (const { frame } of trails) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+  };
+
   const dispose = (): void => {
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     canvas.remove();
   };
 
-  return { canvas, draw, dispose, lost: () => gl.isContextLost() };
+  return { canvas, settle, draw, rewind, dispose, lost: () => gl.isContextLost() };
 }

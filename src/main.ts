@@ -25,6 +25,7 @@ if (still) {
     show();
   });
 } else {
+  primeJackpot(mark);
   let time = 0;
   let last = performance.now();
   let sceneStart = INTRO_S;
@@ -51,8 +52,6 @@ if (still) {
   const primeWin = (): void => {
     if (blastOf(scene) !== Infinity) setTimeout(() => primeJackpot(mark));
   };
-
-  primeWin();
 
   const frameMs = (): number => (blastOf(scene) === Infinity ? FRAME_MS : SPIN_FRAME_MS);
   const wipe = (): number => (turn % 2 ? 1 + ((turn >> 1) % (WIPE_COUNT - 1)) : 0);
