@@ -117,7 +117,8 @@ const solveOrbit = (speedX: number, speedY: number, period: number): Float32Arra
   return samples;
 };
 
-const SUN_HUES = [38, 266, 192];
+const SUN_HUES = [272, 46, 18];
+const SUN_GAINS = [1.7, 0.95, 1.2];
 
 const trio =
   (orbit: Float32Array, seconds: number, wide: number, tall: number, reach: number): Form =>
@@ -132,7 +133,7 @@ const trio =
     const angle = spike ? floor(noise(index, 7) * 4) * (TAU / 4) + time * 0.8 + which : noise(index, 2) * TAU;
     const spread = spike ? ember ** 1.7 * 0.8 * throb : sun ? ember ** 1.5 * 0.2 * throb : 0.012 + tail * ember ** 4 * 0.7;
     const power = spike ? 2.8 * (1 - ember) : sun ? 3 * (1 - ember) + 0.9 : 0.3 + (1 - tail / reach) ** 2 * 2;
-    return [orbit[sample] * wide + cos(angle) * spread, orbit[sample + 1] * tall + sin(angle) * spread, tail * 3.4, SUN_HUES[which], power];
+    return [orbit[sample] * wide + cos(angle) * spread, orbit[sample + 1] * tall + sin(angle) * spread, tail * 3.4, SUN_HUES[which], power * SUN_GAINS[which]];
   };
 
 const moth = trio(solveOrbit(0.464445, 0.39606, 14.8942), 10.5, 2.3, 1.08, 0.72);
@@ -311,28 +312,149 @@ const prism: Shade = (x, y, time) => {
   return facet * glow(radius, 2.5) * (0.95 + wave * 1.5) + glow(radius, 0.24) * 1.2;
 };
 
+const SEVEN_PATH = [
+  [196, 108], [246, 110], [309, 126], [334, 130], [381, 127], [402, 119], [408, 113], [432, 131], [351, 275], [342, 295],
+  [334, 324], [330, 350], [328, 415], [160, 415], [159, 397], [164, 367], [176, 338], [192, 316], [207, 301], [243, 272],
+  [296, 236], [264, 226], [235, 224], [186, 209], [155, 210], [137, 216], [123, 225],
+  [107, 244], [100, 260], [71, 260], [71, 120], [120, 122], [154, 116],
+];
+const SEVEN_CENTER_X = 251.5;
+const SEVEN_CENTER_Y = 261.5;
+const SEVEN_SCALE = 0.0052;
+const SEVEN_RIM = 0.18;
+const SEVEN_TOP = 1.02;
+const SEVEN_BODY_TOP = 0.72;
+const SEVEN_SHOULDER = 0.7;
+const SEVEN_LEFT = -1.12;
+const SEVEN_RIGHT = 0.98;
+const SEVEN_CELLS = 84;
+const SEVEN_CELL = 0.03;
+const SEVEN_RIM_HUE = 46;
+const SEVEN_BODY_PEAK = 0.66;
+
+const buildSevenField = (): Float32Array => {
+  const outline = SEVEN_PATH.map(([x, y]) => [(x - SEVEN_CENTER_X) * SEVEN_SCALE, (SEVEN_CENTER_Y - y) * SEVEN_SCALE]);
+  const field = new Float32Array(SEVEN_CELLS * SEVEN_CELLS);
+  for (let row = 0; row < SEVEN_CELLS; row++) {
+    for (let col = 0; col < SEVEN_CELLS; col++) {
+      const u = (col + 0.5 - SEVEN_CELLS / 2) * SEVEN_CELL;
+      const v = (row + 0.5 - SEVEN_CELLS / 2) * SEVEN_CELL;
+      let nearest = Infinity;
+      let inside = false;
+      for (let index = 0; index < outline.length; index++) {
+        const [startX, startY] = outline[index];
+        const [endX, endY] = outline[(index + 1) % outline.length];
+        const wide = endX - startX;
+        const tall = endY - startY;
+        const along = clamp(((u - startX) * wide + (v - startY) * tall) / (wide * wide + tall * tall));
+        nearest = min(nearest, hypot(u - startX - wide * along, v - startY - tall * along));
+        if (startY > v !== endY > v && u < startX + ((v - startY) * wide) / tall) inside = !inside;
+      }
+      field[row * SEVEN_CELLS + col] = inside ? -nearest : nearest;
+    }
+  }
+  return field;
+};
+
+const SEVEN_FIELD = buildSevenField();
+
+const sevenSide = (u: number, v: number): number => {
+  const col = floor(u / SEVEN_CELL + SEVEN_CELLS / 2);
+  const row = floor(v / SEVEN_CELL + SEVEN_CELLS / 2);
+  return col < 0 || row < 0 || col >= SEVEN_CELLS || row >= SEVEN_CELLS ? Infinity : SEVEN_FIELD[row * SEVEN_CELLS + col];
+};
+
+const sevenShape = (u: number, v: number): number => {
+  if (v > SEVEN_TOP) return Infinity;
+  const side = sevenSide(u, v);
+  if (v > SEVEN_BODY_TOP && side <= 0) return SEVEN_RIM;
+  return side > SEVEN_RIM && v > SEVEN_SHOULDER && u > SEVEN_LEFT && u < SEVEN_RIGHT ? SEVEN_RIM : side;
+};
+
 const SYMBOLS: ((u: number, v: number) => number)[] = [
-  (u, v) => max(clamp((0.25 - abs(v - 0.61)) * 7) * clamp((0.82 - abs(u)) * 7), clamp((0.33 - abs(u - v * 0.62 - 0.26)) * 7) * clamp((0.86 - v) * 7) * clamp((v + 0.86) * 7)),
+  (u, v) => {
+    const side = sevenShape(u, v);
+    if (side > SEVEN_RIM) return 0;
+    return side > 0 ? 1 : 0.58 + clamp((v + 0.85) / 1.7) * 0.24;
+  },
   (u, v) => (hypot(u, v) < 0.78 ? (hypot(u, v) < 0.5 ? 0.5 : 1) : 0),
   (u, v) => clamp((0.86 - abs(u) * 0.9 - abs(v)) * 6) * (u * v > 0 ? 1 : 0.62),
   (u, v) => clamp(-(((u * 1.2) ** 2 + (v * 1.2 + 0.12) ** 2 - 1) ** 3 - (u * 1.2) ** 2 * (v * 1.2 + 0.12) ** 3) * 5),
 ];
-const SYMBOL_HUES = [12, 44, 186, 340];
+const SYMBOL_HUES = [2, 44, 186, 340];
 const STRIP = 32;
-const REEL_STOPS = [0.65, 1.2, 1.95];
-const REEL_BRAKES = [0.42, 0.42, 0.8];
-const REEL_SHAKES = [0.05, 0.05, 0.16];
+const CLEAR_ROWS = 7;
+const REEL_STOPS = [0.65, 1.2, 5];
+const REEL_BRAKES = [0.42, 0.42];
+const REEL_SHAKES = [0.05, 0.05, 0.14];
 const REEL_SPEED = 8.5;
+const RUSH_SPEED = 24;
+const RUSH_CLIMB_S = 0.7;
+const TEASE_S = REEL_STOPS[2] - REEL_STOPS[1];
+const NUDGE_S = 0.24;
+const NUDGE_BACK = 0.7;
+const HALT_S = 0.3;
+const BRAKE_S = 2;
+const BRAKE_CURVE = 1.5;
+const BRAKE_RATE = RUSH_SPEED / (exp(BRAKE_CURVE * BRAKE_S) - 1);
+const RUN_S = TEASE_S - NUDGE_S - HALT_S;
+const CRAWL_S = 1.9;
+const CUT_S = 0.74;
+const CUT_FADE_S = 0.1;
+const HEAT_S = 1.3;
+const BEAT_SYNC_S = 1.83;
+const FIRST_BEATS = 1;
+const PEAK_BEATS = 5.7;
+const CHASE_PER_BEAT = 8;
+const FLOW_PER_BEAT = 0.85;
+const INHALE_S = 0.08;
+const WIN_S = REEL_STOPS[2] + INHALE_S;
+const IGNITIONS = [-0.16, -0.08, 0];
+const IGNITION_PUSH = 0.022;
+const OPEN_S = 1.7;
+const RUSH_DIM = 0.3;
+const STEP_DIM = 0.14;
+const DIM_STEPS = 3;
+const BLUR_SAMPLES = 6;
+const BLUR_STEP = 0.007;
+const FOCUS_X = 0.3;
+const FIT_WIDTH = 430;
+const PAGE_WIDTH_PX = 609;
+const HERO_CENTER_PX = 177;
+const PX_PER_UNIT = 80;
+const SEVEN_REACH = 2.5;
+const NARROW_PUSH = 0.4;
+const REEL_Y = 0.08;
 const BURST_HUES = [46, 192, 276, 330];
-const COIN_COUNT = 260;
+const BURST_COUNT = 14;
+const COIN_COUNT = 520;
+const CHARGE_COUNT = 300;
+const SHARD_COUNT = 420;
 const REEL_GAP = 1.64;
 const SYMBOL_GAP = 1.3;
-const WIN_S = REEL_STOPS[2];
+const SHOCKS = [
+  [0, 12, 0.22],
+  [0.16, 9, 0.17],
+  [0.4, 7, 0.14],
+  [0.8, 6, 0.12],
+];
+const BANNER = [
+  '..## .##. .### #..# ###. .##. #####',
+  '...# #..# #... #.#. #..# #..# ..#..',
+  '...# #..# #... ##.. #..# #..# ..#..',
+  '...# #### #... ##.. ###. #..# ..#..',
+  '...# #..# #... #.#. #... #..# ..#..',
+  '#..# #..# #... #..# #... #..# ..#..',
+  '.##. #..# .### #..# #... .##. ..#..',
+];
+const BANNER_WIDE = 0.12;
+const BANNER_TALL = 0.1;
+const BANNER_Y = 1.2;
 
 const dealStrip = (): Uint8Array => {
   const strip = new Uint8Array(STRIP);
   for (let cell = 1; cell < STRIP; cell++) {
-    const nearPayline = cell < 3 || cell > STRIP - 3;
+    const nearPayline = cell < 3 || cell >= STRIP - CLEAR_ROWS;
     do strip[cell] = floor(Math.random() * SYMBOLS.length);
     while (strip[cell] === strip[cell - 1] || (nearPayline && strip[cell] === 0));
   }
@@ -343,97 +465,254 @@ let strips = REEL_STOPS.map(() => dealStrip());
 let spin = 0;
 let lastLife = -Infinity;
 
-const respin = (life: number): void => {
-  if (life < lastLife) {
-    strips = REEL_STOPS.map(() => dealStrip());
-    spin++;
-  }
-  lastLife = life;
+const rig = {
+  zoom: 1,
+  focus: 0,
+  shiftX: 0,
+  shiftY: 0,
+  rattle: 0,
+  heat: 0,
+  beat: 0,
+  pulse: 0,
+  chase: 0,
+  flow: 0,
+  crawl: 0,
+  cut: 0,
+  dark: 0,
+  thud: 0,
+  tempo: 0,
+  targetX: REEL_GAP,
+  bases: [0, 0, 0],
+  blurs: [0, 0, 0],
+};
+
+const rushTravel = (left: number): number => {
+  if (left < NUDGE_S) return -NUDGE_BACK * (1 - (1 - left / NUDGE_S) ** 2);
+  const run = max(left - NUDGE_S - HALT_S, 0);
+  const brake = min(run, BRAKE_S);
+  const braked = BRAKE_RATE * ((exp(BRAKE_CURVE * brake) - 1) / BRAKE_CURVE - brake);
+  const cruise = RUN_S - RUSH_CLIMB_S;
+  const climb = clamp(run - cruise, 0, RUSH_CLIMB_S);
+  const climbed = climb * (RUSH_SPEED - ((RUSH_SPEED - REEL_SPEED) * climb) / (2 * RUSH_CLIMB_S));
+  return braked - NUDGE_BACK + RUSH_SPEED * (min(run, cruise) - brake) + climbed + REEL_SPEED * max(run - RUN_S, 0);
+};
+
+const beatsLeft = (left: number): number => {
+  const early = max(left - BEAT_SYNC_S, 0);
+  const span = TEASE_S - BEAT_SYNC_S;
+  return rushTravel(min(left, BEAT_SYNC_S)) / SYMBOL_GAP + early * (PEAK_BEATS - ((PEAK_BEATS - FIRST_BEATS) * early) / (2 * span));
 };
 
 const reelPosition = (reel: number, life: number): number => {
   const left = REEL_STOPS[reel] - life;
   const brake = REEL_BRAKES[reel];
-  if (left <= 0) return sin(left * 24) * exp(left * 10) * 0.16;
-  return left < brake ? (-REEL_SPEED * left * left) / (2 * brake) : -REEL_SPEED * (left - brake / 2);
+  if (left <= 0) return sin(left * 24) * exp(left * 10) * (reel === 2 ? -0.16 : 0.16);
+  if (reel === 2) return rushTravel(left);
+  return left < brake ? (REEL_SPEED * left * left) / (2 * brake) : REEL_SPEED * (left - brake / 2);
 };
 
-const reels: Shade = (x, y, _time, life) => {
-  const lift = y - 0.08;
+const landingShake = (life: number): number => {
+  let offset = 0;
+  for (let reel = 0; reel < 3; reel++) {
+    const landed = life - REEL_STOPS[reel];
+    if (landed > 0) offset += sin(landed * 58) * exp(-landed * 9) * REEL_SHAKES[reel];
+  }
+  return offset;
+};
+
+const strike = (age: number): number => (age > 0 ? exp(-age * 13) : 0);
+
+const brace = (life: number): void => {
+  if (life === lastLife) return;
+  if (life < lastLife) {
+    strips = REEL_STOPS.map(() => dealStrip());
+    spin++;
+  }
+  lastLife = life;
+  const left = REEL_STOPS[2] - life;
+  const won = life - WIN_S;
+  const span = clamp(1 - left / TEASE_S);
+  const rise = clamp((life - REEL_STOPS[1]) / HEAT_S);
+  const inhale = clamp(-left / INHALE_S);
+  const heat = left > 0 ? rise : 0;
+  const tick = floor(life * 40);
+  for (let reel = 0; reel < 3; reel++) {
+    rig.bases[reel] = reelPosition(reel, life);
+    rig.blurs[reel] = life < REEL_STOPS[reel] ? abs(reelPosition(reel, life - 0.01) - rig.bases[reel]) * 100 * BLUR_STEP : 0;
+  }
+  rig.tempo = clamp(rig.blurs[2] / (RUSH_SPEED * BLUR_STEP));
+  rig.crawl = clamp(1 - left / CRAWL_S);
+  rig.cut = won > 0 ? 0 : clamp((CUT_S - left) / CUT_FADE_S);
+  const quiver = heat * heat * rig.tempo * 0.1;
+  const blast = won > 0 ? exp(-won * 4.5) * 0.4 : 0;
+  const landing = landingShake(life);
+  rig.heat = heat;
+  rig.pulse = -beatsLeft(max(left, 0));
+  rig.beat = heat ? exp(-fract(rig.pulse) * 4.5) * (1 - rig.cut) : 0;
+  rig.chase = rig.pulse * CHASE_PER_BEAT;
+  rig.flow = rig.pulse * FLOW_PER_BEAT;
+  rig.thud = won > 0 ? 0 : IGNITIONS.reduce((sum, at) => sum + strike(-left - at), 0);
+  const drop = clamp(rig.pulse + DIM_STEPS, 0, DIM_STEPS);
+  const dim = ease(clamp(span * 2)) * RUSH_DIM + (floor(drop) + ease(clamp(fract(drop) * 6))) * STEP_DIM;
+  rig.dark = life > REEL_STOPS[1] ? dim + (1 - dim) * rig.cut : 0;
+  const push = won > 0 ? 1.03 - cos(won * 15) * exp(-won * 4.2) * 0.13 + sin(won * 7) * 0.006 : 1 + span ** 1.6 * 0.2 + rig.beat * heat * (0.014 + rig.crawl * 0.03) + ease(inhale) * 0.05 + rig.thud * IGNITION_PUSH;
+  const fit = min(innerWidth / FIT_WIDTH, 1);
+  const lean = fit < 1 ? NARROW_PUSH : 1;
+  const room = (max(innerWidth - PAGE_WIDTH_PX, 0) / 2 + HERO_CENTER_PX) / PX_PER_UNIT;
+  const framed = fit * (1 + (push - 1) * lean);
+  rig.zoom = won > 0 ? framed : min(framed, room / SEVEN_REACH);
+  rig.focus = FOCUS_X * lean * (won > 0 ? exp(-won * 14) : ease(span));
+  rig.shiftX = (noise(tick, 1) - 0.5) * (quiver + blast) + landing * 0.7;
+  rig.shiftY = (noise(tick, 2) - 0.5) * (quiver + blast) + landing;
+  rig.rattle = (noise(tick, 3) - 0.5) * heat * heat * rig.tempo * 0.2;
+  rig.targetX = rig.focus + (REEL_GAP - rig.focus) * rig.zoom;
+};
+
+const streaks = (u: number, angle: number, base: number): number => {
+  const lane = floor(u * 5);
+  const dash = fract((angle * 1.3 - base) / 3.6 + noise(lane, 1));
+  return abs(u) < 1.15 ? glow(dash - 0.5, 0.13) * (0.3 + noise(lane, 2) * 0.8) : 0;
+};
+
+const reels = (x: number, y: number, life: number): number => {
+  const lift = y - REEL_Y;
   const won = life - WIN_S;
   const reel = floor((x + REEL_GAP * 1.5) / REEL_GAP);
   if (reel < 0 || reel > 2 || abs(lift) >= 1.3) return 0;
   const angle = asin(lift / 1.3);
   const left = REEL_STOPS[reel] - life;
-  const blur = left > 0 ? min(left / REEL_BRAKES[reel], 1) * 0.15 : 0;
-  const base = reelPosition(reel, life);
-  const pop = won > 0 ? 1 + (1 - exp(-won * 11)) * 0.15 + sin(won * 15) * exp(-won * 4) * 0.12 + sin(won * 7) * 0.025 : 1;
-  const u = (x - (reel - 1) * REEL_GAP) / 0.6 / pop;
+  const settled = life - REEL_STOPS[2];
+  const blur = rig.blurs[reel];
+  const base = rig.bases[reel];
+  const throb = left <= 0 ? rig.beat * rig.heat : 0;
+  const pop = won > 0 ? 1 + (1 - exp(-won * 11)) * 0.12 + sin(won * 15) * exp(-won * 3.4) * 0.13 + sin(won * 7) * 0.02 : 1 + throb * (0.07 + rig.crawl * 0.05) + (settled > 0 ? settled * 0.12 : 0);
+  const u = (x + (reel === 2 ? rig.rattle : 0) - (reel - 1) * REEL_GAP) / 0.6 / pop;
   const strip = strips[reel];
+  const others = settled > 0 ? 0 : (1 - rig.cut) * (left > 0 ? 1 - rig.crawl * 0.7 : 1 - min(rig.heat * 3, 1) * 0.78);
+  const rushing = clamp((blur - 0.09) / 0.08);
+  const smear = rushing ? streaks(u, angle, base) * rushing : 0;
   let sum = 0;
+  let peak = 0;
   let hue = 0;
-  for (let sample = 0; sample < 4; sample++) {
-    const place = (angle * 1.3 - base + (sample - 1.5) * blur) / SYMBOL_GAP + 0.5;
+  let body = false;
+  for (let sample = 0; sample < BLUR_SAMPLES; sample++) {
+    const place = (angle * 1.3 - base + (sample - (BLUR_SAMPLES - 1) / 2) * blur) / SYMBOL_GAP + 0.5;
     const row = floor(place);
     const symbol = strip[((row % STRIP) + STRIP) % STRIP];
-    const value = SYMBOLS[symbol](u, ((place - row - 0.5) * 2 * 1.08) / pop) * (symbol && won > 0 ? max(1 - won * 3.5, 0) : 1);
+    const v = ((place - row - 0.5) * 2 * 1.08) / pop;
+    const value = SYMBOLS[symbol](u, v) * (symbol ? others : 1);
     sum += value;
-    hue += value * (SYMBOL_HUES[symbol] + (symbol ? 0 : (0.9 - abs(lift)) * 34));
+    if (value > peak) {
+      peak = value;
+      body = !symbol && sevenShape(u, v) <= 0;
+      hue = symbol || body ? SYMBOL_HUES[symbol] : SEVEN_RIM_HUE;
+    }
   }
-  if (!sum) return 0;
+  if (!sum && !smear) return 0;
   const landed = left <= 0 ? exp(left * 7) * 0.7 : 0;
-  const sweep = won > 0 ? glow(x + lift * 0.5 + 3.8 - fract(won * 0.8) * 7.6, 0.42) * 0.8 : 0;
-  const pulse = won > 0 ? 0.95 + sin(won * 9 - abs(x)) * 0.07 : 0.84;
-  tint = hue / sum + (won > 0 ? sin(won * 6 + x * 1.4) * 8 : 0);
-  return (sum / 4) * cos(angle) ** 1.4 * (pulse + landed + sweep);
+  const lit = settled - IGNITIONS[reel];
+  const asleep = reel < 2 && lit <= 0 ? rig.cut * 0.62 : 0;
+  const hot = lit > 0 && won <= 0 ? 0.5 + exp(-lit * 11) * 0.9 : left > 0 ? rig.heat * (1 - rushing * 0.45) * 0.45 : 0;
+  const sweep = won > 0 ? glow(x + lift * 0.5 + 3.8 - fract(won * 0.8) * 7.6, 0.2) * 0.8 : 0;
+  const shine = won > 0 ? 0.95 + sin(won * 9 - abs(x)) * 0.07 : 0.84 + throb * 0.5;
+  const solid = (sum / BLUR_SAMPLES) * (1 - rushing * 0.25);
+  tint = smear > solid ? 46 - rig.heat * 26 : hue + (won > 0 ? sin(won * 6 + x * 1.4) * 8 : 0);
+  const light = (solid + smear) * cos(angle) ** (left > 0 ? 1.4 + rig.crawl * 3.4 : 1.4) * (shine + landed + sweep + hot) * (1 - asleep);
+  return body ? min(light, SEVEN_BODY_PEAK + sweep) : light;
 };
 
-const rays: Shade = (x, y, time, life) => {
-  const lift = y - 0.08;
+const rays = (x: number, y: number, life: number): number => {
+  const lift = y - REEL_Y;
   const won = life - WIN_S;
   const reach = hypot(x, lift);
   const angle = atan2(lift, x);
-  const front = clamp(sin(angle * 9 + time * 19) * 3.4 - 1);
-  const back = clamp(sin(angle * 6 - time * 12 + 1) * 3 - 1.6);
+  const turn = (1 - exp(-won * 1.5)) * 7 + won * 0.9;
+  const front = clamp(sin(angle * 10 + turn) * 3.4 - 1);
+  const back = clamp(sin(angle * 6 - turn * 0.7 + 1) * 3 - 1.6);
   const clear = 0.08 + 0.92 * ease(clamp((hypot(x / 2.4, lift / 1.02) - 0.68) * 3.4));
-  const fade = clear * glow(reach, 3.6) * min(won * 4, 1);
-  const shock = max(glow(reach - won * 7.5, 0.3) * exp(-won * 1.8), won > 0.45 ? glow(reach - (won - 0.45) * 6, 0.22) * exp(-(won - 0.45) * 2.2) : 0);
-  const flash = exp(-won * 7) * glow(reach, 3.4) * 1.2;
-  const beam = max(front * 0.86, back * 0.5) * fade;
+  const fade = clear * glow(reach, 4.4) * min(won * 5, 1);
+  const flash = exp(-won * 10) * glow(reach, 4.2) * 1.8;
+  const plate = 1 - clamp((0.5 - abs(y - BANNER_Y)) * 6) * clamp((2.4 - abs(x)) * 4) * min(won * 2, 1) * 0.82;
+  const beam = max(front * 0.92, back * 0.6) * fade * plate;
+  let shock = 0;
+  for (const [start, speed, width] of SHOCKS) {
+    const age = won - start;
+    if (age > 0) shock = max(shock, glow(reach - age * speed, width * (1 + age)) * exp(-age * 1.7));
+  }
   tint = front * 0.86 > back * 0.5 ? 42 - reach * 9 : 318 + reach * 10;
-  return beam + shock * 1.1 + flash;
+  return beam + shock * 1.25 + flash;
 };
 
-const tease: Shade = (x, y, time, life) => {
-  const rising = clamp((life - REEL_STOPS[1]) / (WIN_S - REEL_STOPS[1]));
-  const box = max(abs(x - REEL_GAP) - 0.7, abs(y - 0.08) - 1.02);
-  const chase = 0.5 + 0.5 * sin((x + y * 1.4) * 8 - time * 24);
-  tint = 44;
-  return glow(box, 0.08) * chase * rising * 0.95 + clamp(-box * 4) * rising * rising * 0.12;
+const tease = (x: number, y: number): number => {
+  const { heat, beat, pulse, chase, crawl, cut } = rig;
+  if (!heat) return 0;
+  const across = x - REEL_GAP;
+  const lift = y - REEL_Y;
+  const box = max(abs(across) - 0.74, abs(lift) - 1.12);
+  const lights = 0.5 + 0.5 * sin((x + y * 1.4) * 8 - chase);
+  const hit = beat * (1 + crawl * 1.8);
+  const rim = glow(box, 0.07 + heat * 0.07 + hit * 0.04) * (0.4 + lights * 0.6) * min(heat * 6, 1) * (0.85 + hit * 0.6);
+  const wash = clamp(-box * 4) * heat * heat * (0.05 + hit * 0.1);
+  const closing = fract(pulse);
+  const wave = glow(hypot(across, lift * 1.15) - (0.95 + (1 - closing) ** 2 * 3.2), 0.1 + heat * 0.06) * closing * heat * 0.72 * (1 + crawl * 0.5);
+  tint = 46 - heat * 30 + (wave > rim ? 330 : 0);
+  return (rim + wash + wave) * (1 - cut);
+};
+
+const banner = (x: number, y: number, won: number): number => {
+  const size = 1 + exp(-won * 13) * 2.4;
+  const col = floor(x / (BANNER_WIDE * size) + BANNER[0].length / 2);
+  const row = floor((BANNER_Y - y) / (BANNER_TALL * size) + BANNER.length / 2);
+  if (BANNER[row]?.[col] !== '#') return 0;
+  tint = 46 + sin(won * 5 + x * 1.2) * 14;
+  return 1.05 + sin(won * 11 - x * 2) * 0.12;
 };
 
 const payout: Emit = (time, plot, life) => {
   const won = life - WIN_S;
+  const { heat } = rig;
   for (let reel = 0; reel < 3; reel++) {
     const landed = life - REEL_STOPS[reel];
-    if (landed <= 0 || landed > 0.5) continue;
+    if (landed <= 0 || landed > 0.5 || reel === 2) continue;
     for (let index = 0; index < 34; index++) {
       const seed = index + reel * 40 + spin * 131;
       const angle = noise(seed, 3) * TAU;
       const reach = 0.5 + (noise(seed, 4) * 1.2 + 0.2) * (1 - (1 - landed * 2) ** 3);
-      plot((reel - 1) * REEL_GAP + cos(angle) * reach, 0.08 + sin(angle) * reach * 0.8 - landed * landed * 1.4, (1 - landed * 2) * 1.5, 46);
+      plot((reel - 1) * REEL_GAP + cos(angle) * reach, REEL_Y + sin(angle) * reach * 0.8 - landed * landed * 1.4, (1 - landed * 2) * 1.5, 46);
+    }
+  }
+  if (heat && rig.cut < 1) {
+    for (let index = 0; index < CHARGE_COUNT; index++) {
+      const seed = index + spin * 131;
+      const age = fract(rig.flow * (0.7 + noise(seed, 6) * 0.6) + noise(seed, 7));
+      const reach = (1 - age) ** 1.5 * 4 + 0.5;
+      const angle = noise(seed, 8) * TAU + age * 1.5;
+      if (abs(reach * cos(angle)) > 0.72 || abs(reach * sin(angle)) > 0.8) plot(rig.targetX + cos(angle) * reach, REEL_Y + sin(angle) * reach * 0.72, (0.25 + age) * heat * 1.9 * (1 - rig.cut), 46 - heat * 26 - age * 12);
     }
   }
   if (won <= 0) return;
+  if (won < 0.7) {
+    for (let index = 0; index < SHARD_COUNT; index++) {
+      const seed = index + spin * 77;
+      const angle = noise(seed, 3) * TAU;
+      const speed = 3 + noise(seed, 4) * 11;
+      const fly = (1 - exp(-won * 5)) / 5;
+      const hue = index % 4 ? 44 : 330;
+      for (let trail = 0; trail < 3; trail++) {
+        const reach = 0.3 + speed * max(fly - trail * 0.012, 0) * 2.4;
+        plot(cos(angle) * reach, REEL_Y + sin(angle) * reach * 0.8, (1 - won / 0.7) * (1.7 - trail * 0.4), hue);
+      }
+    }
+  }
   for (let index = 0; index < COIN_COUNT; index++) {
     const seed = index + spin * 131;
-    const flight = (won - (index % 4) * 0.34 - noise(seed, 2) * 0.28) * (0.62 + noise(seed, 1) * 0.5);
+    const flight = (won - (index % 4) * 0.3 - noise(seed, 2) * 0.24) * (0.7 + noise(seed, 1) * 0.5);
     if (flight < 0) continue;
     const age = fract(flight);
     const angle = noise(seed, 3) * TAU;
-    const speed = 1.7 + noise(seed, 4) * 3;
+    const speed = 2 + noise(seed, 4) * 3.6;
     const x = cos(angle) * (0.5 + speed * age);
-    const y = 0.08 + sin(angle) * (0.5 + speed * age) * 0.74 - age * age * 1.9;
+    const y = REEL_Y + sin(angle) * (0.5 + speed * age) * 0.74 - age * age * 1.9;
     const flip = abs(cos(time * 13 + index)) * 0.09;
     const weight = 1.5 * (1 - age * 0.55);
     if (index % 3) {
@@ -443,44 +722,38 @@ const payout: Emit = (time, plot, life) => {
       plot(x, y, weight * 1.5 * abs(sin(time * 19 + index * 1.7)), 30 + noise(seed, 5) * 18);
     }
   }
-  for (let burst = 0; burst < 7; burst++) {
-    const start = burst * 0.36 + 0.12 + noise(burst, spin + 7) * 0.16;
+  for (let burst = 0; burst < BURST_COUNT; burst++) {
+    const start = burst * 0.27 + 0.1 + noise(burst, spin + 7) * 0.14;
     const age = (won - start) / 0.95;
     if (age <= 0 || age >= 1) continue;
-    const centerX = (noise(burst, spin + 1) - 0.5) * 5.4;
-    const centerY = 0.1 + (noise(burst, spin + 2) - 0.5) * 2.3;
+    const centerX = (noise(burst, spin + 1) - 0.5) * 6;
+    const centerY = 0.1 + (noise(burst, spin + 2) - 0.5) * 2.6;
     const hue = BURST_HUES[floor(noise(burst, spin + 3) * BURST_HUES.length)];
     const open = 1 - (1 - age) ** 3;
-    const size = 0.8 + noise(burst, spin + 4) * 0.7;
-    for (let spark = 0; spark < 80; spark++) {
+    const size = 0.9 + noise(burst, spin + 4) * 0.9;
+    for (let spark = 0; spark < 110; spark++) {
       const angle = spark * 2.39996;
-      const reach = (0.82 + noise(spark, burst) * 0.42) * size * open;
-      plot(centerX + cos(angle) * reach, centerY + sin(angle) * reach * 0.82 - age * age * 0.55, (1 - age) ** 1.3 * 1.5, hue + (spark % 5) * 6);
+      const reach = (0.5 + noise(spark, burst) * 0.75) * size * open;
+      plot(centerX + cos(angle) * reach, centerY + sin(angle) * reach * 0.82 - age * age * 0.55, (1 - age) ** 1.3 * 1.6, hue + (spark % 5) * 6);
     }
   }
 };
 
 const coins = swarm(payout);
 
-const shake = (life: number): number => {
-  let offset = 0;
-  for (let reel = 0; reel < 3; reel++) {
-    const landed = life - REEL_STOPS[reel];
-    if (landed > 0) offset += sin(landed * 58) * exp(-landed * 9) * REEL_SHAKES[reel];
-  }
-  return offset;
-};
-
 const slots: Shade = (x, y, time, life) => {
-  respin(life);
+  brace(life);
   const won = life - WIN_S;
-  const offset = shake(life);
-  const symbol = reels(x + offset * 0.7, y + offset, time, life);
+  const sceneX = rig.focus + (x - rig.focus) / rig.zoom + rig.shiftX;
+  const sceneY = REEL_Y + (y - REEL_Y) / rig.zoom + rig.shiftY;
+  const symbol = reels(sceneX, sceneY, life);
   if (symbol > 0.3) return symbol;
   const symbolHue = tint;
-  const spark = coins(x, y, time, life);
+  const title = won > 0 ? banner(sceneX, sceneY, won) : 0;
+  if (title) return title;
+  const spark = coins(x + rig.shiftX, y + rig.shiftY, time, life);
   const sparkHue = tint;
-  const backdrop = won > 0 ? rays(x, y, time, life) : tease(x, y, time, life);
+  const backdrop = won > 0 ? rays(sceneX, sceneY, life) : tease(sceneX, sceneY);
   if (spark > 0.32 && spark >= backdrop * 0.8) {
     tint = sparkHue;
     return spark;
@@ -598,7 +871,7 @@ const planet: Shade = (x, y, time, life) => {
   }
   if (reach >= 1 || (orbitZ < 0 && band > 0.16)) {
     const limb = reach >= 1 ? glow(reach - 1, 0.14) * clamp((u * sunX + v * sunY) * 1.4 + 0.5) : 0;
-    tint = band > limb ? 20 + ring * 8 : 214;
+    tint = band > limb ? 176 + ring * 9 : 214;
     return max(band, limb);
   }
   const depth = sqrt(1 - reach * reach);
@@ -711,9 +984,23 @@ type Visit = (col: number, row: number, value: number, name: SceneName, x: numbe
 const NAMES = Object.keys(SCENES) as (keyof typeof SCENES)[];
 
 const LONG_HOLD_S = HOLD_S * 2 + FADE_S;
-const HOLDS: Partial<Record<SceneName, number>> = { suns: 4.1, orbits: LONG_HOLD_S, strings: LONG_HOLD_S, slots: 5 };
+const HOLDS: Partial<Record<SceneName, number>> = { suns: 4.1, orbits: LONG_HOLD_S, strings: LONG_HOLD_S, slots: WIN_S + 4.3 };
 
 export const holdOf = (scene: number): number => HOLDS[NAMES[scene]] ?? HOLD_S;
+
+export const blastOf = (scene: number): number => (NAMES[scene] === 'slots' ? WIN_S : Infinity);
+
+export type Hush = { dark: number; pull: number; tremble: number; beat: number };
+
+export const CALM: Hush = { dark: 0, pull: 0, tremble: 0, beat: 0 };
+
+export const hushOf = (scene: number, life: number, fade: number): Hush => {
+  if (NAMES[scene] !== 'slots' || life <= REEL_STOPS[1]) return CALM;
+  brace(life);
+  const { dark, crawl, heat, tempo, beat, thud } = rig;
+  const calm = 1 - fade;
+  return { dark: dark * calm, pull: crawl * crawl * calm, tremble: heat * heat * tempo * calm, beat: (beat * crawl + thud) * calm };
+};
 
 export const SCENE_COUNT = NAMES.length - 1;
 
@@ -729,21 +1016,27 @@ export const WIPE_COUNT = WIPES.length;
 
 export const levelOf = (value: number): number => clamp(floor(value * RAMP.length), 0, RAMP.length - 1);
 
-const edge = (x: number, y: number, time: number): number => {
+const edge = (x: number, y: number, time: number, open = 0): number => {
   const angle = atan2(y - 0.1, x);
-  const reach = hypot(x / 3.25, (y - 0.1) / 1.6);
+  const reach = hypot(x / 3.25, (y - 0.1) / 1.6) / (1 + open);
   const wobble = 0.05 + 0.03 * sin(angle * 3 + time * 0.7) + 0.02 * sin(angle * 5 - time * 0.5);
-  return clamp((1 - reach - wobble) * 2.8);
+  const sides = open ? clamp((3.3 - abs(x)) * (1.6 + rig.cut * 8)) * clamp((1.72 - abs(y)) * 5) : 1;
+  return clamp((1 - reach - wobble) * 2.8) * sides;
+};
+
+const openOf = (life: number): number => {
+  const won = life - WIN_S;
+  return won > 0 ? 0.5 + exp(-won * 1.2) * 0.3 : ease(clamp((life - REEL_STOPS[1]) / OPEN_S)) * 0.5 + rig.cut * 0.5;
 };
 
 const MOTES = 56;
 
-const eachMote = (time: number, visit: Visit): void => {
+const eachMote = (time: number, light: number, visit: Visit): void => {
   for (let index = 0; index < MOTES; index++) {
     const x = (fract(noise(index, 1) + time * 0.012 * (noise(index, 2) - 0.5)) - 0.5) * 6.4;
     const y = (fract(noise(index, 3) + time * 0.03 * (0.4 + noise(index, 4))) - 0.5) * 3.2;
     const twinkle = 0.5 + 0.5 * sin(time * (1 + noise(index, 5) * 2) + index);
-    visit(x / CELL + COLS / 2, ROWS / 2 - y / STEP, 0.34 * twinkle * edge(x, y, time), 'dust', x, y, 0);
+    visit(x / CELL + COLS / 2, ROWS / 2 - y / STEP, 0.34 * twinkle * light * edge(x, y, time), 'dust', x, y, 0);
   }
 };
 
@@ -753,12 +1046,13 @@ export function eachCell(frame: Frame, visit: Visit): void {
   const order: Wipe = origin ? (x, y, grain) => (hypot(x - origin[0], y - origin[1]) / (3.7 + hypot(...origin))) * 0.86 + grain * 0.14 : WIPES[wipe];
   const first = NAMES[from];
   const second = NAMES[to];
-  eachMote(time, visit);
+  const open = first === 'slots' ? openOf(life) * (1 - progress) : 0;
+  eachMote(time, first === 'slots' ? 1 - rig.cut : 1, visit);
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const x = (col + 0.5 - COLS / 2) * CELL;
       const y = (ROWS / 2 - row - 0.5) * STEP;
-      const fade = edge(x, y, time);
+      const fade = edge(x, y, time, open);
       if (fade <= 0) continue;
       const grain = noise(col, row);
       const age = (progress - order(x, y, grain) * (1 - FLIGHT)) / FLIGHT;
