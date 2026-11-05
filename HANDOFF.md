@@ -93,7 +93,7 @@ Key decisions:
 Tradeoff: page text is unreadable for about 2.5 s of storm plus 1 s of blackout once per scene cycle while the hero is on screen. It is also dimmed for about 2.9 s before the blackout.
 
 ## OG image
-`public/og.jpg` is 1200×630. It is the slots scene at `life` 6.8 with the JACKPOT banner hidden, so it is not a literal page frame. The layout is 600×315 at device scale 2, with `#mark` at `font-size: 7.2px`, the name at 25px and "Software Engineer" at 13.5px, centred. JPEG quality is 88.
+`public/og.jpg` is 1200×630. It is the `corona` scene, the black disc with the yellow rim, because it matches the logo in `public/favicon.svg`. Do not swap it for another scene. The frame uses `time` 12.9 and `life` 1, so the glint sits at the upper right. The layout is 600×315 at device scale 3, downscaled to 1200×630, with `#mark` at `font-size: 8.1px` and the ring centred at y 116. The name is 25px and "Software Engineer" is 13.5px, centred. JPEG quality is 88.
 
 ## Palettes
 - Three-body: `SUN_HUES = [272, 46, 18]`, `SUN_GAINS = [1.7, 0.95, 1.2]`. Violet needs the extra gain because it has the lowest luminance. Rejected: gold/violet/cyan as clashing, violet/blue/aqua as gloomy, any pink.
